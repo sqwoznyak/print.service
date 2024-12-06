@@ -1,9 +1,11 @@
+import io
+import PyPDF2
+from docx import Document
 from aiogram import Dispatcher, types
+from aiogram.types import ReplyKeyboardMarkup
 from config import SUPPORTED_FORMATS, RATES
 from message import *
 from kb import *
-from aiogram.types import ReplyKeyboardMarkup
-
 
 # Хранилище для данных
 user_data = {}
@@ -44,7 +46,7 @@ async def file_received_handler(message: types.Message):
         await message.answer(msg_file_error)
         return
 
-    # Сохранение файла
+    # Вот тут по идее будет работате БД заказов
     user_id = message.from_user.id
     user_data[user_id] = {"cart": [], "current_file": {
         "file_id": message.document.file_id,
@@ -53,6 +55,31 @@ async def file_received_handler(message: types.Message):
         "is_color": False,
         "is_a3": False,
     }}
+
+    # Загружаем файл в память
+    file_id = message.document.file_id
+    file = await message.bot.get_file(file_id)
+    file_path = file.file_path
+    file_data = await message.bot.download_file(file_path)
+
+    # Обработка PDF файлов
+    if file_extension == "pdf":
+        pdf_reader = PyPDF2.PdfFileReader(file_data)
+        num_pages = pdf_reader.getNumPages()
+        user_data[user_id]["current_file"]["pages"] = num_pages
+        await message.answer(f"{msg_file_uploaded}\nКоличество страниц в документе: {num_pages}")
+
+    # Обработка DOCX файлов
+    elif file_extension == "docx":
+        doc = Document(file_data)
+        num_pages = len(doc.element.xpath('//w:sectPr'))  # Считаем количество разделов как количество страниц
+        user_data[user_id]["current_file"]["pages"] = num_pages
+        await message.answer(f"{msg_file_uploaded}\nКоличество страниц в документе: {num_pages}")
+
+    else:
+        await message.answer(msg_file_uploaded)
+
+    # Отображаем настройки печати
     await message.answer(
         msg_print_settings,
         reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(
